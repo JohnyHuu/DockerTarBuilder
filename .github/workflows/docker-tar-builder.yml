@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       image_name:
-        description: 'Docker image name (e.g., nginx:latest)'
+        description: 'Docker image name (e.g., appsmith/appsmith-ce)'
         required: true
         default: 'appsmith/appsmith-ce'
       platform:
-        description: 'Platform (linux/amd64, linux/arm64, etc.)'
+        description: 'Platform (linux/amd64)'
         required: true
         default: 'linux/amd64'
 
@@ -16,22 +16,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Pull and save Docker image
+      - name: Pull Docker image
         run: |
           docker pull --platform ${{ github.event.inputs.platform }} ${{ github.event.inputs.image_name }}
-          docker save ${{ github.event.inputs.image_name }} | gzip > image.tar.gz
 
-      - name: Upload artifact
+      - name: Save as split tar.gz chunks
+        run: |
+          # 保存镜像并分卷压缩（每卷200MB）
+          docker save ${{ github.event.inputs.image_name }} | gzip | split -b 200M - image.tar.gz.part_
+          
+      - name: Upload artifact parts
         uses: actions/upload-artifact@v4
         with:
-          name: docker-images-tar
-          path: image.tar.gz
+          name: docker-image-split
+          path: image.tar.gz.part_*
+          retention-days: 7
+          compression-level: 0  # 文件已压缩，无需二次压缩
