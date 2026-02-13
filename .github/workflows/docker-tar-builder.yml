@@ -4,34 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       image_name:
-        description: 'Docker image name (e.g., appsmith/appsmith-ce)'
+        description: 'Docker image name'
         required: true
         default: 'appsmith/appsmith-ce'
-      platform:
-        description: 'Platform (linux/amd64)'
-        required: true
-        default: 'linux/amd64'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Pull Docker image
         run: |
-          docker pull --platform ${{ github.event.inputs.platform }} ${{ github.event.inputs.image_name }}
+          docker pull ${{ github.event.inputs.image_name }}
 
-      - name: Save as split tar.gz chunks
+      - name: Split into 50MB chunks
         run: |
-          # 保存镜像并分卷压缩（每卷200MB）
-          docker save ${{ github.event.inputs.image_name }} | gzip | split -b 200M - image.tar.gz.part_
-          
-      - name: Upload artifact parts
+          docker save ${{ github.event.inputs.image_name }} | gzip | split -b 50M - appsmith.tar.gz.part_
+          ls -lh
+
+      - name: Upload individual parts
         uses: actions/upload-artifact@v4
         with:
-          name: docker-image-split
-          path: image.tar.gz.part_*
+          name: appsmith-parts
+          path: appsmith.tar.gz.part_*
           retention-days: 7
-          compression-level: 0  # 文件已压缩，无需二次压缩
