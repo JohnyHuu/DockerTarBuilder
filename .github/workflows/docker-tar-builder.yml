@@ -12,18 +12,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. 配置国内镜像加速（彻底解决拉取慢/超时）
+      - name: Configure Docker mirror (China)
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"registry-mirrors": ["https://docker.nju.edu.cn", "https://docker.mirrors.sjtug.sjtu.edu.cn"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker || true
+
+      # 2. 拉取镜像（带重试，确保成功）
       - name: Pull Docker image
         run: |
-          docker pull ${{ github.event.inputs.image_name }}
+          for i in {1..3}; do
+            docker pull --platform linux/amd64 ${{ github.event.inputs.image_name }} && break || sleep 10;
+          done
 
-      - name: Split into 50MB chunks
+      # 3. 保存并压缩为单个 .tar.gz 文件（关键改进）
+      - name: Save and compress image
         run: |
-          docker save ${{ github.event.inputs.image_name }} | gzip | split -b 50M - appsmith.tar.gz.part_
-          ls -lh
+          docker save ${{ github.event.inputs.image_name }} | gzip > appsmith.tar.gz
+          echo "压缩后文件大小："
+          ls -lh appsmith.tar.gz
 
-      - name: Upload individual parts
+      # 4. 上传压缩包作为 Artifact
+      - name: Upload compressed image
         uses: actions/upload-artifact@v4
         with:
-          name: appsmith-parts
-          path: appsmith.tar.gz.part_*
+          name: appsmith-image
+          path: appsmith.tar.gz
           retention-days: 7
+          compression-level: 0   # 文件已是 gzip 压缩，禁止二次压缩
